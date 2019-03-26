@@ -1,5 +1,5 @@
 <html>
-    <canvas id="glCanvas" width="2560" height="1600"></canvas>
+    <canvas style="display: none;" id="glCanvas" width="2560" height="1600"></canvas>
     <script id="vs" type="x-shader/x-vertex">
         #version 300 es
         #define POSITION_LOCATION 0
@@ -194,11 +194,12 @@
             gl.bindFramebuffer(gl.FRAMEBUFFER, renderFB);
             gl.viewport(0, 0, 4096, 4096);
 
-            var video = setupVideo('test4.mp4')
-            window.video = video
+            // var video = setupVideo('test4.mp4')
+            // window.video = video
             window.rendered = false
-            setInterval(function() {
-                if (window.copyVideo && !window.rendered) {
+            
+            video.addEventListener('playing', function() {
+                if (!window.rendered) {
 
                     gl.clear(gl.COLOR_BUFFER_BIT);
 
@@ -207,6 +208,7 @@
 
                     var frame = 0;
                     function tick() {
+                        console.log(video.currentTime)
                         var y = Math.round((frame - (frame % cols))/cols);
                         var x = frame % cols;
                         console.log(frame, x, y, (frame - (frame % cols))/rows)
@@ -235,7 +237,9 @@
 
                         if (frame < rows*cols) {
                             frame += 1;
-                            setTimeout(tick, 1000*video.duration/(rows*cols))
+                            // The timing is tricky to do properly (Without looping), so aim
+                            // to do a little less than all 45
+                            setTimeout(tick, 1000*video.duration/(rows*cols + 4))
                         } else {
                             gl.bindFramebuffer(gl.FRAMEBUFFER, null);
                             gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
@@ -258,11 +262,14 @@
                             gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
                             gl.bindBuffer(gl.ARRAY_BUFFER, null);
 
+                            
                             var program = createProgram(gl, getShaderSource('vs'), createFancyShader());
                             var srcLocation = gl.getUniformLocation(program, 'src');
                             gl.useProgram(program);
                             gl.uniform1i(srcLocation, 0);
                             gl.bindVertexArray(vertexArray);
+                            
+                            
                             gl.bindTexture(gl.TEXTURE_2D, renderTexture);
         
                             gl.clear(gl.COLOR_BUFFER_BIT)
@@ -278,45 +285,11 @@
                     window.rendered = true;
                 }
 
-            }, 100);
+            });
+            video.play();
             
         });
     } 
-
-    function setupVideo(url) {
-        const video = document.createElement('video');
-
-        var playing = false;
-        var timeupdate = false;
-
-        video.autoplay = true;
-        video.muted = true;
-        video.loop = true;
-
-        // Waiting for these 2 events ensures
-        // there is data in the video
-
-        video.addEventListener('playing', function () {
-            playing = true;
-            checkReady();
-        }, true);
-
-        video.addEventListener('timeupdate', function () {
-            timeupdate = true;
-            checkReady();
-        }, true);
-
-        video.src = url;
-        video.play();
-
-        function checkReady() {
-            if (playing && timeupdate) {
-                copyVideo = true;
-            }
-        }
-
-        return video;
-    }
 
     function loadTexture(gl, url, ready) {
         const texture = gl.createTexture();
@@ -482,11 +455,71 @@
         blobAnchor.click();
     };
 
-    main();
+    function setupVideo(url) {
+        const video = document.createElement('video');
+
+        var playing = false;
+        var timeupdate = false;
+
+        video.muted = true;
+        video.loop = true;
+
+        // Waiting for these 2 events ensures
+        // there is data in the video
+
+        video.addEventListener('playing', function () {
+            playing = true;
+            checkReady();
+        }, true);
+
+        video.addEventListener('timeupdate', function () {
+            timeupdate = true;
+            checkReady();
+        }, true);
+
+        video.src = url;
+
+        function checkReady() {
+            if (playing && timeupdate) {
+                copyVideo = true;
+            }
+        }
+
+        return video;
+    }
+
+    function dropHandler(ev) {
+        console.log('File(s) dropped');
+
+        // Prevent default behavior (Prevent file from being opened)
+        ev.preventDefault();
+
+        // Use DataTransferItemList interface to access the file(s)
+        for (var i = 0; i < ev.dataTransfer.items.length; i++) {
+            // If dropped items aren't files, reject them
+            if (ev.dataTransfer.items[i].kind === 'file') {
+                var file = ev.dataTransfer.items[i].getAsFile();
+                console.log('... file[' + i + '].name = ' + file.name);
+                window.video = setupVideo(URL.createObjectURL(file))
+                main();
+            }
+        }
+    }
+
+    function dragOverHandler(ev) {
+        // Prevent default behavior (Prevent file from being opened)
+        ev.preventDefault();
+    }
+
+    // main();
     </script>
     <span id="stat_"></span>
 
-<a id="blob">blob</a>
-<a id="dataURI">dataURI</a>
+<a style="display: none;" id="blob">blob</a>
+<a style="display: none;" id="dataURI">dataURI</a>
+
+<div id="drop_zone" style="width: 100%; height: 100%; background: #ccc;" ondrop="dropHandler(event);" ondragover="dragOverHandler(event);">
+    <p>Drag one or more files to this Drop Zone ...</p>
+</div>
 
 </html>
