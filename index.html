@@ -1,0 +1,334 @@
+<html>
+    <canvas id="glCanvas" width="640" height="480"></canvas>
+    <script id="vs" type="x-shader/x-vertex">
+        #version 300 es
+        #define POSITION_LOCATION 0
+        #define TEXCOORD_LOCATION 4
+        
+        precision highp float;
+        precision highp int;
+        layout(location = POSITION_LOCATION) in vec2 position;
+        layout(location = TEXCOORD_LOCATION) in vec2 texcoord;
+        out vec2 v_st;
+        void main()
+        {
+            v_st = texcoord;
+            gl_Position = vec4(position, 0.0, 1.0);
+        }
+    </script>
+
+    <script id="fs" type="x-shader/x-fragment">
+        #version 300 es
+        precision highp float;
+        precision highp int;
+        precision highp sampler2D;
+        uniform sampler2D src;
+        in vec2 v_st;
+        out vec4 color;
+        void main()
+        {
+            color = texture(src, v_st);
+        }
+    </script>
+    <script>
+    function main() {
+        const canvas = document.querySelector("#glCanvas");
+        const gl = canvas.getContext("webgl2", { preserveDrawingBuffer: true });
+        if (gl === null) {
+            alert("Unable to initialize WebGL. Your browser or machine may not support it.");
+            return;
+        }
+
+        gl.clearColor(1.0, 0.0, 0.0, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        window.getShaderSource = function(id) {
+            return document.getElementById(id).textContent.replace(/^\s+|\s+$/g, '');
+        };
+
+        function createShader(gl, source, type) {
+            var shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            return shader;
+        }
+
+        window.createProgram = function(gl, vertexShaderSource, fragmentShaderSource) {
+            var program = gl.createProgram();
+            var vshader = createShader(gl, vertexShaderSource, gl.VERTEX_SHADER);
+            var fshader = createShader(gl, fragmentShaderSource, gl.FRAGMENT_SHADER);
+            gl.attachShader(program, vshader);
+            gl.deleteShader(vshader);
+            gl.attachShader(program, fshader);
+            gl.deleteShader(fshader);
+            gl.linkProgram(program);
+
+            var log = gl.getProgramInfoLog(program);
+            if (log) {
+                console.log(log);
+            }
+
+            log = gl.getShaderInfoLog(vshader);
+            if (log) {
+                console.log(log);
+            }
+
+            log = gl.getShaderInfoLog(fshader);
+            if (log) {
+                console.log(log);
+            }
+
+            return program;
+        };
+
+        var program = createProgram(gl, getShaderSource('vs'), getShaderSource('fs'));
+        var srcLocation = gl.getUniformLocation(program, 'src');
+
+        // -- Init buffers
+        var positions = new Float32Array([
+            -1.0, -1.0,
+            1.0, -1.0,
+            1.0,  1.0,
+            1.0,  1.0,
+            -1.0,  1.0,
+            -1.0, -1.0
+        ]);
+        var vertexPosBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertexPosBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+        var texCoords = new Float32Array([
+            0.0, 1.0,
+            1.0, 1.0,
+            1.0, 0.0,
+            1.0, 0.0,
+            0.0, 0.0,
+            0.0, 1.0
+        ]);
+        var vertexTexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertexTexBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, texCoords, gl.STATIC_DRAW);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+        // -- Init VertexArray
+        var vertexArray = gl.createVertexArray();
+        gl.bindVertexArray(vertexArray);
+        var vertexPosLocation = 0; // set with GLSL layout qualifier
+        gl.enableVertexAttribArray(vertexPosLocation);
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertexPosBuffer);
+        gl.vertexAttribPointer(vertexPosLocation, 2, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+        var vertexTexLocation = 4; // set with GLSL layout qualifier
+        gl.enableVertexAttribArray(vertexTexLocation);
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertexTexBuffer);
+        gl.vertexAttribPointer(vertexTexLocation, 2, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+        gl.bindVertexArray(null);
+
+        window.loadImage = function(url, onload) {
+            var img = new Image();
+            img.src = url;
+            img.onload = function () {
+                onload(img);
+            };
+            return img;
+        };
+
+        gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+
+        gl.activeTexture(gl.TEXTURE0);
+        loadTexture(gl, 'test.png', function(texture) {
+            gl.useProgram(program);
+            gl.uniform1i(srcLocation, 0);
+            gl.bindVertexArray(vertexArray);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+
+            var min_x = -1.0;
+            var max_x = 0.0;
+            var min_y = -1.0;
+            var max_y = 0.0;
+
+            var positions = new Float32Array([
+                min_x, min_y,
+                max_x, min_y,
+                max_x,  max_y,
+                max_x,  max_y,
+                min_x,  max_y,
+                min_x, min_y
+            ]);
+
+            gl.bindBuffer(gl.ARRAY_BUFFER, vertexPosBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+            gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+            gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+            var video = setupVideo('test.mp4')
+            window.video = video
+            window.rendered = false
+            setInterval(function() {
+                if (window.copyVideo && !window.rendered) {
+
+                    gl.clear(gl.COLOR_BUFFER_BIT);
+
+                    var rows = 9;
+                    var cols = 5;
+
+                    var frame = 0;
+                    function tick() {
+                        var y = Math.round((frame - (frame % cols))/cols);
+                        var x = frame % cols;
+                        console.log(frame, x, y, (frame - (frame % cols))/rows)
+
+                        var min_x = 2*x/cols - 1.0;
+                        var max_x = 2*(x+1)/cols - 1.0;
+                        var min_y = 2*y/rows - 1.0;
+                        var max_y = 2*(y+1)/rows - 1.0;
+
+                        var positions = new Float32Array([
+                            min_x, min_y,
+                            max_x, min_y,
+                            max_x, max_y,
+                            max_x, max_y,
+                            min_x, max_y,
+                            min_x, min_y
+                        ]);
+
+                        gl.bindBuffer(gl.ARRAY_BUFFER, vertexPosBuffer);
+                        gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+                        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+                        updateTexture(gl, texture, video);
+
+                        gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+                        if (frame < rows*cols) {
+                            frame += 1;
+                            setTimeout(tick, 1000*video.duration/(rows*cols))
+                        }
+                    }
+
+                    tick();
+
+                    window.rendered = true;
+                }
+
+            }, 100);
+            
+        });
+    } 
+
+    function setupVideo(url) {
+        const video = document.createElement('video');
+
+        var playing = false;
+        var timeupdate = false;
+
+        video.autoplay = true;
+        video.muted = true;
+        video.loop = true;
+
+        // Waiting for these 2 events ensures
+        // there is data in the video
+
+        video.addEventListener('playing', function () {
+            playing = true;
+            checkReady();
+        }, true);
+
+        video.addEventListener('timeupdate', function () {
+            timeupdate = true;
+            checkReady();
+        }, true);
+
+        video.src = url;
+        video.play();
+
+        function checkReady() {
+            if (playing && timeupdate) {
+                copyVideo = true;
+            }
+        }
+
+        return video;
+    }
+
+    function loadTexture(gl, url, ready) {
+        const texture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+
+        // Because images have to be download over the internet
+        // they might take a moment until they are ready.
+        // Until then put a single pixel in the texture so we can
+        // use it immediately. When the image has finished downloading
+        // we'll update the texture with the contents of the image.
+        const level = 0;
+        const internalFormat = gl.RGBA;
+        const width = 1;
+        const height = 1;
+        const border = 0;
+        const srcFormat = gl.RGBA;
+        const srcType = gl.UNSIGNED_BYTE;
+        const pixel = new Uint8Array([0, 0, 255, 255]);  // opaque blue
+        gl.texImage2D(gl.TEXTURE_2D, level, internalFormat,
+            width, height, border, srcFormat, srcType,
+            pixel);
+
+        const image = new Image();
+        image.onload = function () {
+            gl.bindTexture(gl.TEXTURE_2D, texture);
+            gl.texImage2D(gl.TEXTURE_2D, level, internalFormat,
+                srcFormat, srcType, image);
+
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+
+            if (ready) ready(texture);
+        };
+        image.src = url;
+
+        return texture;
+    }
+
+    function createRenderTexture() {
+        // create to render to
+        const targetTextureWidth = 256;
+        const targetTextureHeight = 256;
+        const targetTexture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, targetTexture);
+        
+        {
+        // define size and format of level 0
+        const level = 0;
+        const internalFormat = gl.RGBA;
+        const border = 0;
+        const format = gl.RGBA;
+        const type = gl.UNSIGNED_BYTE;
+        const data = null;
+        gl.texImage2D(gl.TEXTURE_2D, level, internalFormat,
+                        targetTextureWidth, targetTextureHeight, border,
+                        format, type, data);
+        
+        // set the filtering so we don't need mips
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        }
+    }
+
+    function updateTexture(gl, texture, video) {
+        const level = 0;
+        const internalFormat = gl.RGBA;
+        const srcFormat = gl.RGBA;
+        const srcType = gl.UNSIGNED_BYTE;
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.texImage2D(gl.TEXTURE_2D, level, internalFormat,
+            srcFormat, srcType, video);
+    }
+
+    main();
+    </script>
+hello world
+
+</html>
