@@ -48,8 +48,15 @@
 
     <script>
     function main() {
+        // Receive the calibration data
+        var ws = new WebSocket('ws://localhost:11222/');
+		ws.onmessage = function(event) {
+			window.calibration = JSON.parse(event.data);
+		};
+
         const canvas = document.querySelector("#glCanvas");
         const gl = canvas.getContext("webgl2", { preserveDrawingBuffer: true });
+        window.gl = gl;
         if (gl === null) {
             alert("Unable to initialize WebGL. Your browser or machine may not support it.");
             return;
@@ -68,6 +75,7 @@
             gl.compileShader(shader);
             return shader;
         }
+        window.createShader = createShader
 
         window.createProgram = function(gl, vertexShaderSource, fragmentShaderSource) {
             var program = gl.createProgram();
@@ -250,14 +258,17 @@
                             gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
                             gl.bindBuffer(gl.ARRAY_BUFFER, null);
 
-                            var program = createProgram(gl, getShaderSource('vs'), getShaderSource('fs2'));
+                            var program = createProgram(gl, getShaderSource('vs'), createFancyShader());
                             var srcLocation = gl.getUniformLocation(program, 'src');
                             gl.useProgram(program);
                             gl.uniform1i(srcLocation, 0);
                             gl.bindVertexArray(vertexArray);
                             gl.bindTexture(gl.TEXTURE_2D, renderTexture);
         
+                            gl.clear(gl.COLOR_BUFFER_BIT)
                             gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+                            window.setTimeout(dataURI_DL, 1000);
                             
                         }
                     }
@@ -391,8 +402,93 @@
             srcFormat, srcType, video);
     }
 
+    function createFancyShader() {
+        function v(k) {
+            return window.calibration[k]['value']
+        }
+
+        views_x = 5
+        views_y = 9
+        size = [v('screenW'), v('screenH')]
+        screenInches = size[0]/v('DPI')
+        pitch = v('pitch') * screenInches * Math.cos(Math.atan(1.0/v('slope')))
+        tilt = size[1]/(size[0]*v('slope'))
+        subp = 1.0 / (3*size[0]) * pitch
+        center = v('center')
+
+        var shader = '#version 300 es\n';
+        shader += 'precision highp float;\n';
+        shader += 'precision highp int;\n';
+        shader += 'precision highp sampler2D;\n';
+        shader += 'uniform sampler2D src;\n';
+        shader += 'in vec2 v_st;\n';
+        shader += 'out vec4 color;\n'
+        shader += 'const float pitch = ' + pitch + ';\n'
+        shader += 'const float center = ' + center +';\n';
+        shader += 'const float tilt = ' + tilt + ';\n';
+        shader += 'const float subp = ' + subp + ';\n';
+        shader += 'const vec2 tiles = vec2(' +views_x+','+views_y+');\n'
+        shader += 'vec2 quilt_map(vec2 pos, float a) {\n'
+        shader += '    vec2 tile = vec2(tiles.x-1.0,0);\n'
+        shader += '    vec2 dir = vec2(-1,1);\n'
+        shader += '    a = fract(a)*tiles.y;\n'
+        shader += '    tile.y += dir.y*floor(a);\n'
+        shader += '    a = fract(a)*tiles.x;\n'
+        shader += '    tile.x += dir.x*floor(a);\n'
+        shader += '    return (tile+pos)/tiles;\n'
+        shader += '}\n\n'
+        shader += 'void main() {\n'
+        shader += '    float a;\n'
+        shader += '    a = (v_st.x + (1.0 - v_st.y)*tilt)*pitch - center;\n'
+        shader += '    color.x = texture(src, quilt_map(v_st, a)).x;\n'
+        shader += '    color.y = texture(src, quilt_map(v_st, a+subp)).y;\n'
+        shader += '    color.z = texture(src, quilt_map(v_st, a+2.0*subp)).z;\n'
+        shader += '    color.w = 1.0;\n'
+        shader += '}\n'
+
+        return shader;
+    }
+
+    function dataURIToBlob(dataURI) {
+        var binStr = atob(dataURI.split(',')[1]),
+            len = binStr.length,
+            arr = new Uint8Array(len),
+            mimeString = dataURI.split(',')[0].split(':')[1].split(';')[0]
+
+        for (var i = 0; i < len; i++) {
+            arr[i] = binStr.charCodeAt(i);
+        }
+
+        return new Blob([arr], {
+            type: mimeString
+        });
+
+    }
+
+    var dataURI_DL = function () {
+        var dataURI = gl.canvas.toDataURL("image/png").replace("image/png", "image/octet-stream");
+        var blob = dataURIToBlob(dataURI);
+        var url = URL.createObjectURL(blob);
+        var blobAnchor = document.getElementById('blob');
+        var dataURIAnchor = document.getElementById('dataURI');
+        blobAnchor.download = dataURIAnchor.download = 'test.png';
+        blobAnchor.href = url;
+        dataURIAnchor.href = dataURI;
+        stat_.textContent = '';
+
+        blobAnchor.onclick = function () {
+            requestAnimationFrame(function () {
+                URL.revokeObjectURL(url);
+            })
+        };
+        blobAnchor.click();
+    };
+
     main();
     </script>
-hello world
+    <span id="stat_"></span>
+
+<a id="blob">blob</a>
+<a id="dataURI">dataURI</a>
 
 </html>
