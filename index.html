@@ -413,7 +413,7 @@
         screenInches = size[0]/v('DPI')
         pitch = v('pitch') * screenInches * Math.cos(Math.atan(1.0/v('slope')))
         tilt = size[1]/(size[0]*v('slope'))
-        subp = 1.0 / (3*size[0]) * pitch
+        subp = (1.0 / (3*size[0]))
         center = v('center')
 
         var shader = '#version 300 es\n';
@@ -428,22 +428,20 @@
         shader += 'const float tilt = ' + tilt + ';\n';
         shader += 'const float subp = ' + subp + ';\n';
         shader += 'const vec2 tiles = vec2(' +views_x+','+views_y+');\n'
-        shader += 'vec2 quilt_map(vec2 pos, float a) {\n'
-        shader += '    vec2 tile = vec2(tiles.x-1.0,0);\n'
-        shader += '    vec2 dir = vec2(-1,1);\n'
-        shader += '    a = fract(a)*tiles.y;\n'
-        shader += '    tile.y += dir.y*floor(a);\n'
-        shader += '    a = fract(a)*tiles.x;\n'
-        shader += '    tile.x += dir.x*floor(a);\n'
-        shader += '    return (tile+pos)/tiles;\n'
-        shader += '}\n\n'
+        shader += 'vec2 texArr(vec3 uvz) {\n'
+        shader += '    float z = floor(uvz.z * tiles.x * tiles.y);\n'
+        shader += '    float x = (mod(z, tiles.x) + uvz.x) / tiles.x;\n'
+        shader += '    float y = (floor(z / tiles.x) + uvz.y) / tiles.y;\n'
+        shader += '    return vec2(x, y);\n'
+        shader += '}\n'
         shader += 'void main() {\n'
-        shader += '    float a;\n'
-        shader += '    a = (v_st.x + (1.0 - v_st.y)*tilt)*pitch - center;\n'
-        shader += '    color.x = texture(src, quilt_map(v_st, a)).x;\n'
-        shader += '    color.y = texture(src, quilt_map(v_st, a+subp)).y;\n'
-        shader += '    color.z = texture(src, quilt_map(v_st, a+2.0*subp)).z;\n'
-        shader += '    color.w = 1.0;\n'
+        shader += '    vec4 rgb[3];\n'
+        shader += '    for (int i = 0; i < 3; i++) {'
+        shader += '        float z = (v_st.x + float(i) * subp + v_st.y * tilt) * pitch - center;\n'
+        shader += '        z = 0.0 + mod(z + ceil(abs(z)), 1.0);\n' // Implies invView == 0, contrary to config
+        shader += '        rgb[i] = texture(src, texArr(vec3(v_st.x, v_st.y, z)));\n'
+        shader += '    }\n'
+        shader += '    color = vec4(rgb[0].r, rgb[1].g, rgb[2].b, 1.0);\n'
         shader += '}\n'
 
         return shader;
