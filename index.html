@@ -1,4 +1,16 @@
 <html>
+    <style>
+   body {
+       font-family: helvetica, arial;
+   } 
+   #drop_zone {
+       padding: 20px;
+       box-sizing: border-box;
+   }
+   .drop {
+       background: blue !important;
+   }
+    </style>
     <canvas style="display: none;" id="glCanvas" width="2560" height="1600"></canvas>
     <script id="vs" type="x-shader/x-vertex">
         #version 300 es
@@ -212,6 +224,7 @@
                         var y = Math.round((frame - (frame % cols))/cols);
                         var x = frame % cols;
                         console.log(frame, x, y, (frame - (frame % cols))/rows)
+                        document.getElementById('status').innerHTML = "Rendering frame #" + frame + " of " + rows*cols;
 
                         var min_x = 2*x/cols - 1.0;
                         var max_x = 2*(x+1)/cols - 1.0;
@@ -241,6 +254,8 @@
                             // to do a little less than all 45
                             setTimeout(tick, 1000*video.duration/(rows*cols + 4))
                         } else {
+                            document.getElementById('status').innerHTML = "Compositing";
+
                             gl.bindFramebuffer(gl.FRAMEBUFFER, null);
                             gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
 
@@ -275,6 +290,7 @@
                             gl.clear(gl.COLOR_BUFFER_BIT)
                             gl.drawArrays(gl.TRIANGLES, 0, 6);
 
+                            document.getElementById('status').innerHTML = "Saving...";
                             window.setTimeout(dataURI_DL, 1000);
                             
                         }
@@ -442,7 +458,7 @@
         var url = URL.createObjectURL(blob);
         var blobAnchor = document.getElementById('blob');
         var dataURIAnchor = document.getElementById('dataURI');
-        blobAnchor.download = dataURIAnchor.download = 'test.png';
+        blobAnchor.download = dataURIAnchor.download = window.filename + ".png"
         blobAnchor.href = url;
         dataURIAnchor.href = dataURI;
         stat_.textContent = '';
@@ -450,6 +466,7 @@
         blobAnchor.onclick = function () {
             requestAnimationFrame(function () {
                 URL.revokeObjectURL(url);
+                document.getElementById('status').innerHTML = 'Done. Please refresh the page to process another video.';
             })
         };
         blobAnchor.click();
@@ -490,6 +507,7 @@
 
     function dropHandler(ev) {
         console.log('File(s) dropped');
+        document.getElementById('drop_zone').className = '';
 
         // Prevent default behavior (Prevent file from being opened)
         ev.preventDefault();
@@ -500,15 +518,22 @@
             if (ev.dataTransfer.items[i].kind === 'file') {
                 var file = ev.dataTransfer.items[i].getAsFile();
                 console.log('... file[' + i + '].name = ' + file.name);
+                window.filename = file.name
                 window.video = setupVideo(URL.createObjectURL(file))
                 main();
+                return;
             }
         }
     }
 
     function dragOverHandler(ev) {
+        document.getElementById('drop_zone').className = 'drop';
         // Prevent default behavior (Prevent file from being opened)
         ev.preventDefault();
+    }
+
+    function dragLeaveHandler(ev) {
+        document.getElementById('drop_zone').className = '';
     }
 
     // main();
@@ -518,8 +543,30 @@
 <a style="display: none;" id="blob">blob</a>
 <a style="display: none;" id="dataURI">dataURI</a>
 
-<div id="drop_zone" style="width: 100%; height: 100%; background: #ccc;" ondrop="dropHandler(event);" ondragover="dragOverHandler(event);">
-    <p>Drag one or more files to this Drop Zone ...</p>
+<div id="drop_zone" style="width: 100%; height: 100%; background: #ccc;" ondrop="dropHandler(event);" ondragover="dragOverHandler(event);" ondragleave="dragLeaveHandler(event);" ondragend="(dragLeaveHandler(event);">
+    <div id="status">
+        <h1>Ben's Janky Looking Glass Oven (for baking holograms from panning video).</h1>
+        <p>This is a self-contained webpage that can convert from a panning video to a hologram (either captured handheld or via a motorized rig). In order for it you work you need to have the LookingGlass ThreeJS <a href="https://s3.amazonaws.com/static-files.lookingglassfactory.com/WebCalibrationBridge/LKG_ThreeJsDriver_Mac.pkg">driver</a> installed (I don't have the Windows driver link handy, but if you try the holoplay.js sample it should prompt to install).</p>
+        <p>How to use it</p>
+        <ol>
+            <li>Install the prerequisite driver mentioned above.</li>
+            <li>Take a video panning on your phone from right to left along a straight line.</li>
+            <li>Get the video on your computer and drag it onto the gray part of this page (in Chrome).</li>
+            <li>Wait while the video is processed (should take about as long as the video takes to play in real-time).</li>
+            <li>The baked image will download as a PNG automatically.</li>
+            <li>Open the PNG on your looking glass and make sure it is full screen. That's it! No fancy software required.</li>
+        </ol>
+        <p>Some notes:</p>
+        <ul>
+            <li>I hacked this together in a few hours right after getting my looking glass. It's a huge kludge and is not production ready code (global variables galore). It works on Mac with Chrome as of 3/26/2019. YMMV.</li>
+            <li>Because the image is based on calibration data from your Looking Glass, the baked imaged may not work correctly on other displays</li>
+            <li>If you're brave, rotate the camera on a linear path such that the object of focus is always in the center (this is very hard).</li>
+            <li>You may have to try a couple orientations for the video not to decode upside-down (on my Pixel 3 the camera controls need to be on the right).</li>
+            <li>There's basically no error handling, so if things don't work. Check the console.</li>
+            <li>Many thanks to: the Holoplay.js source code, random WebGL tutorials, and mozilla developer documentation.</li> 
+        </ul>
+        
+    Drag one or more files to this Drop Zone ...</div>
 </div>
 
 </html>
